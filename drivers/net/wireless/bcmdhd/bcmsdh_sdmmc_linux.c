@@ -52,6 +52,9 @@
 #if !defined(SDIO_DEVICE_ID_BROADCOM_4319)
 #define SDIO_DEVICE_ID_BROADCOM_4319	0x4319
 #endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4319) */
+#if !defined(SDIO_DEVICE_ID_BROADCOM_4329)
+#define SDIO_DEVICE_ID_BROADCOM_4329   0x4329
+#endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4329) */
 #if !defined(SDIO_DEVICE_ID_BROADCOM_4330)
 #define SDIO_DEVICE_ID_BROADCOM_4330	0x4330
 #endif /* !defined(SDIO_DEVICE_ID_BROADCOM_4330) */
@@ -152,6 +155,7 @@ static const struct sdio_device_id bcmsdh_sdmmc_ids[] = {
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4325_SDGWB) },
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4325) },
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4319) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4329) },
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_BROADCOM, SDIO_DEVICE_ID_BROADCOM_4330) },
 	{ /* end: all zeroes */				},
 };
@@ -167,9 +171,9 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 
 	if (func->num != 2)
 		return 0;
+#if defined(OOB_INTR_ONLY)
 	if (dhd_os_check_wakelock(bcmsdh_get_drvdata()))
 		return -EBUSY;
-#if defined(OOB_INTR_ONLY)
 	bcmsdh_oob_intr_set(0);
 #endif
 	smp_mb();
