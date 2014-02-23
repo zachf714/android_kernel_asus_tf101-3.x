@@ -24,10 +24,14 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <asm/gpio.h>
+#include <asm/uaccess.h>
 
 /*#define DEBUG           1*/
 #define VERBOSE_DEBUG   1
-//#define SET_RIL_3G
+
+#ifdef CONFIG_RIL
+#define SET_RIL_3G
+#endif
 
 MODULE_DESCRIPTION("IDT Proximity Sensor Driver LDS6202");
 MODULE_LICENSE("GPL");
@@ -456,9 +460,23 @@ int prox_lds6202_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+ssize_t prox_lds6202_write(struct file *flip, const char __user *buf, size_t count, loff_t *offs) {
+    char cmd;
+
+    if (copy_from_user(&cmd, buf, sizeof(char))) return -EFAULT;
+
+    if (cmd == '0')
+        prox_lds6202_disable();
+    else if (cmd == '1')
+        prox_lds6202_enable();
+
+    return count;
+}
+
 struct file_operations prox_lds6202_fops = {
 	.owner =    THIS_MODULE,
 	.open =     prox_lds6202_open,
+    .write =    prox_lds6202_write,
 };
 
 /**********************************************************

@@ -28,12 +28,14 @@
 #include <mach/iomap.h>
 #include <mach/sdhci.h>
 
+#include <mach/board-ventana-misc.h>
 #include "gpio-names.h"
 #include "board.h"
 
-#define VENTANA_WLAN_PWR	TEGRA_GPIO_PK5
-#define VENTANA_WLAN_RST	TEGRA_GPIO_PK6
-#define VENTANA_WLAN_WOW	TEGRA_GPIO_PS0
+//#define TF101_WLAN_PWR	TEGRA_GPIO_PK5
+#define TF101_WLAN_RST	TEGRA_GPIO_PK6
+#define TF101_WLAN_WOW	TEGRA_GPIO_PS0
+#define TF101_SDIO_WOW	TEGRA_GPIO_PY6
 
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
@@ -127,24 +129,27 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.mmc_data = {
 		.register_status_notify	= ventana_wifi_status_register,
 		.embedded_sdio = &embedded_sdio_data0,
-		.built_in = 1,
+		.built_in = 0,
 	},
+	.wow_gpio = TF101_SDIO_WOW,
 	.cd_gpio = -1,
 	.wp_gpio = -1,
 	.power_gpio = -1,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
+	.wow_gpio = -1,
 	.cd_gpio = TEGRA_GPIO_PI5,
 	.wp_gpio = TEGRA_GPIO_PH1,
-	.power_gpio = TEGRA_GPIO_PI6,
+	.power_gpio = TEGRA_GPIO_PT3,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.is_8bit = 1,
+	.wow_gpio = -1,
 	.cd_gpio = -1,
 	.wp_gpio = -1,
-	.power_gpio = -1,
+	.power_gpio = TEGRA_GPIO_PI6,
 	.mmc_data = {
 		.built_in = 1,
 	}
@@ -205,16 +210,16 @@ static int ventana_wifi_power(int on)
 {
 	pr_debug("%s: %d\n", __func__, on);
 
-	gpio_set_value(VENTANA_WLAN_PWR, on);
-	mdelay(100);
-	gpio_set_value(VENTANA_WLAN_RST, on);
+//	gpio_set_value(TF101_WLAN_PWR, on);
+//	mdelay(100);
+	gpio_set_value(TF101_WLAN_RST, on);
 	mdelay(200);
-
+/*
 	if (on)
 		clk_enable(wifi_32k_clk);
 	else
 		clk_disable(wifi_32k_clk);
-
+*/
 	return 0;
 }
 
@@ -226,23 +231,24 @@ static int ventana_wifi_reset(int on)
 
 static int __init ventana_wifi_init(void)
 {
+/*
 	wifi_32k_clk = clk_get_sys(NULL, "blink");
 	if (IS_ERR(wifi_32k_clk)) {
 		pr_err("%s: unable to get blink clock\n", __func__);
 		return PTR_ERR(wifi_32k_clk);
 	}
+*/
+//	gpio_request(TF101_WLAN_PWR, "wlan_power");
+	gpio_request(TF101_WLAN_RST, "wlan_rst");
+	gpio_request(TF101_WLAN_WOW, "bcmsdh_sdmmc");
 
-	gpio_request(VENTANA_WLAN_PWR, "wlan_power");
-	gpio_request(VENTANA_WLAN_RST, "wlan_rst");
-	gpio_request(VENTANA_WLAN_WOW, "bcmsdh_sdmmc");
+//	tegra_gpio_enable(TF101_WLAN_PWR);
+	tegra_gpio_enable(TF101_WLAN_RST);
+	tegra_gpio_enable(TF101_WLAN_WOW);
 
-	tegra_gpio_enable(VENTANA_WLAN_PWR);
-	tegra_gpio_enable(VENTANA_WLAN_RST);
-	tegra_gpio_enable(VENTANA_WLAN_WOW);
-
-	gpio_direction_output(VENTANA_WLAN_PWR, 0);
-	gpio_direction_output(VENTANA_WLAN_RST, 0);
-	gpio_direction_input(VENTANA_WLAN_WOW);
+//	gpio_direction_output(TF101_WLAN_PWR, 0);
+	gpio_direction_output(TF101_WLAN_RST, 0);
+	gpio_direction_input(TF101_WLAN_WOW);
 
 	platform_device_register(&ventana_wifi_device);
 
@@ -253,6 +259,14 @@ static int __init ventana_wifi_init(void)
 }
 int __init ventana_sdhci_init(void)
 {
+	switch (ASUSGetProjectID()) {
+	case 102:
+		tegra_sdhci_platform_data0.max_clk_limit = 36000000;
+		break;
+	default:
+		tegra_sdhci_platform_data0.max_clk_limit = 40000000;
+	}
+
 	tegra_gpio_enable(tegra_sdhci_platform_data2.power_gpio);
 	tegra_gpio_enable(tegra_sdhci_platform_data2.cd_gpio);
 	tegra_gpio_enable(tegra_sdhci_platform_data2.wp_gpio);

@@ -62,6 +62,9 @@
 
 #define LIGHT_IRQ_GPIO	TEGRA_GPIO_PZ2
 
+extern unsigned int ASUSGetProjectID( void );
+
+static bool al3000a_init_fail = false;
 static int poll_mode=0;
 struct delayed_work al3000a_poll_data_work;
 static struct workqueue_struct *sensor_work_queue;
@@ -103,17 +106,6 @@ static int lux_reduce_ep101_table[64]={
 250,300,350,400,500,600,700,900,
 1100,1400,1500,1500,1500,1500,1500,1500,
 1500,1500,1500,1500,1500,1500,1500,1500,
-1500,1795,2154,2586,3105,3728,4475,5372,
-6449,7743,9295,11159,13396,16082,19307,23178,
-27826,33405,40103,48144,57797,69386,83298,100000};
-
-/* 100 , 200 , 300 , 400 , 500 , 600 , 700 , 950 , 1300 are tested */
-static int lux_ep103_table[64]={
-1,1,1,2,2,2,3,4,
-4,10,20,30,40,50,60,70,
-80,90,100,125,150,175,200,250,
-300,350,400,500,650,600,700,950,
-1300,1500,1500,1500,1500,1500,1500,1500,
 1500,1795,2154,2586,3105,3728,4475,5372,
 6449,7743,9295,11159,13396,16082,19307,23178,
 27826,33405,40103,48144,57797,69386,83298,100000};
@@ -362,28 +354,25 @@ static bool al3000a_read_lux(struct i2c_client *client,
 
 static int al3000a_Init(struct i2c_client *client)
 {
-	int i=0;	
-//	switch(project_id){
-//		case 101:
+	int project_id = ASUSGetProjectID();
+	int i=0;
+	printk("ASUSGetProjectID() = %d \n", project_id);
+	switch(project_id){
+		case 101:
 		for(i=0;i<64;i++){
-			lux_table[i] = lux_reduce_ep101_table[i];		
+			lux_table[i] = lux_reduce_ep101_table[i];
 		}
-/*		break;
+		break;
 		case 102:
 		for(i=0;i<64;i++){
 			lux_table[i] = lux_ep102_table[i];
 		}
 		break;
-		case 103:
-		for(i=0;i<64;i++){
-			lux_table[i] = lux_ep103_table[i];		
-		}	
-		break;	
 		default:
 		for(i=0;i<64;i++){
-			lux_table[i] = lux_reduce_ep101_table[i];		
+			lux_table[i] = lux_reduce_ep101_table[i];
 		}
-	}*/
+	}
 
 	struct al3000a_data *data = i2c_get_clientdata(client);
 	u8 buffer[1];
@@ -416,6 +405,9 @@ static int al3000a_Init(struct i2c_client *client)
 static ssize_t show_show_reg(struct device *dev,
 			struct device_attribute *devattr, char *buf)
 {
+	if(al3000a_init_fail == true){
+		return sprintf(buf, "%d \n", -1);
+	}
 	struct i2c_client *client = to_i2c_client(dev);
 	struct al3000a_data *data = i2c_get_clientdata(client);
 	u8 count;
@@ -428,6 +420,10 @@ static ssize_t show_show_reg(struct device *dev,
 static ssize_t show_show_lux(struct device *dev,
 			struct device_attribute *devattr, char *buf)
 {
+	if(al3000a_init_fail == true){
+		printk("Light sensor: al3000a hardware chip fail !!!! \n");
+		return sprintf(buf, "%d \n", -1);
+	}
 	struct i2c_client *client = to_i2c_client(dev);
 	struct al3000a_data *data = i2c_get_clientdata(client);
 	u8 raw_data;
@@ -460,7 +456,7 @@ static struct attribute *al3000a_attr[] = {
 
 static irqreturn_t al3000a_interrupt_handler(int irq, void *dev_id)
 {
-	printk("Light sensor: %s\n", __FUNCTION__);
+	//printk("Light sensor: %s\n", __FUNCTION__);
 	struct al3000a_data * data= dev_id;
 
 	schedule_work(&data->work);
@@ -483,7 +479,7 @@ static void al3000a_work(struct work_struct *work)
 	else{
 		count = count & 0x3F;
 		data->lux = lux_table[count];
-		printk("lux value is : %d \n", data->lux);
+		//printk("lux value is : %d \n", data->lux);
 	}
 }
 
@@ -535,8 +531,10 @@ static int al3000a_probe(struct i2c_client *client,
 	}
 	err = al3000a_Init(client);
 	if (err < 0) {
-		dev_err(&client->dev, "AL3000A  initialization fails\n");
-		goto exit_int;
+		al3000a_init_fail = true;
+		printk("Light sensor: al3000a chip init fail !!!! \n");
+		//dev_err(&client->dev, "AL3000A  initialization fails\n");
+		//goto exit_int;
 	}
 
 	dev_info(&client->dev, "%s chip found Gpio %d\n", client->name,
@@ -608,6 +606,9 @@ static int al3000a_remove(struct i2c_client *client)
 
 static int al3000a_suspend(struct i2c_client *client, pm_message_t mesg)
 {
+	if(al3000a_init_fail == true){
+		return 0;
+	}
 	struct al3000a_data *data = i2c_get_clientdata(client);
 	bool status;
 
@@ -619,13 +620,16 @@ static int al3000a_suspend(struct i2c_client *client, pm_message_t mesg)
 	if (!status) {
 		dev_err(&client->dev, "Error in setting power down and idle mode\n");
 		mutex_unlock(&data->lock);
-		return -EBUSY;
+		return 0;
 	}
 	mutex_unlock(&data->lock);
 	return 0;
 }
 static int al3000a_resume(struct i2c_client *client)
 {
+	if(al3000a_init_fail == true){
+		return 0;
+	}
 	struct al3000a_data *data = i2c_get_clientdata(client);
 	bool status;
 
@@ -637,7 +641,7 @@ static int al3000a_resume(struct i2c_client *client)
 	if (!status) {
 		dev_err(&client->dev, "Error in setting power up mode\n");
 		mutex_unlock(&data->lock);
-		return -EBUSY;
+		return 0;
 	}
 	mutex_unlock(&data->lock);
 	return 0;

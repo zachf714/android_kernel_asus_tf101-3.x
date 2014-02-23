@@ -23,6 +23,7 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/gpio.h>
+#include <mach/gpio.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/miscdevice.h>

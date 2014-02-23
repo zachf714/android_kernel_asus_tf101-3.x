@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-ventana-panel.c
  *
- * Copyright (c) 2010-2012, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include <linux/earlysuspend.h>
 #include <linux/pwm_backlight.h>
 #include <linux/nvhost.h>
+#include <linux/mm.h>
 #include <mach/nvmap.h>
 #include <mach/irqs.h>
 #include <mach/iomap.h>
@@ -37,6 +38,7 @@
 #include "gpio-names.h"
 #include "board.h"
 
+#define ventana_pnl_pwr_enb	TEGRA_GPIO_PC6
 #define ventana_bl_enb		TEGRA_GPIO_PD4
 #define ventana_lvds_shutdown	TEGRA_GPIO_PB2
 #define ventana_hdmi_hpd	TEGRA_GPIO_PN7
@@ -46,12 +48,9 @@
 #define ventana_pnl_to_lvds_ms	0
 #define ventana_lvds_to_bl_ms	200
 
-static struct regulator *pnl_pwr;
-
-#ifdef CONFIG_TEGRA_DC
 static struct regulator *ventana_hdmi_reg = NULL;
 static struct regulator *ventana_hdmi_pll = NULL;
-#endif
+
 
 static int ventana_backlight_init(struct device *dev) {
 	int ret;
@@ -86,8 +85,8 @@ static int ventana_disp1_check_fb(struct device *dev, struct fb_info *info);
 static struct platform_pwm_backlight_data ventana_backlight_data = {
 	.pwm_id		= 2,
 	.max_brightness	= 255,
-	.dft_brightness	= 224,
-	.pwm_period_ns	= 5000000,
+	.dft_brightness	= 157,
+	.pwm_period_ns	= 4000000,
 	.init		= ventana_backlight_init,
 	.exit		= ventana_backlight_exit,
 	.notify		= ventana_backlight_notify,
@@ -103,27 +102,16 @@ static struct platform_device ventana_backlight_device = {
 	},
 };
 
-#ifdef CONFIG_TEGRA_DC
 static int ventana_panel_enable(void)
 {
 	struct regulator *reg = regulator_get(NULL, "vdd_ldo4");
 
-	if (!reg) {
+	if (reg) {
 		regulator_enable(reg);
 		regulator_put(reg);
 	}
 
-	if (pnl_pwr == NULL) {
-		pnl_pwr = regulator_get(NULL, "pnl_pwr");
-		if (WARN_ON(IS_ERR(pnl_pwr)))
-			pr_err("%s: couldn't get regulator pnl_pwr: %ld\n",
-				__func__, PTR_ERR(pnl_pwr));
-		else
-			regulator_enable(pnl_pwr);
-	} else {
-		regulator_enable(pnl_pwr);
-	}
-
+	gpio_set_value(ventana_pnl_pwr_enb, 1);
 	mdelay(ventana_pnl_to_lvds_ms);
 	gpio_set_value(ventana_lvds_shutdown, 1);
 	mdelay(ventana_lvds_to_bl_ms);
@@ -133,7 +121,7 @@ static int ventana_panel_enable(void)
 static int ventana_panel_disable(void)
 {
 	gpio_set_value(ventana_lvds_shutdown, 0);
-	regulator_disable(pnl_pwr);
+	gpio_set_value(ventana_pnl_pwr_enb, 0);
 	return 0;
 }
 
@@ -223,8 +211,8 @@ static struct tegra_dc_mode ventana_panel_modes[] = {
 		.v_sync_width = 4,
 		.h_back_porch = 58,
 		.v_back_porch = 4,
-		.h_active = 1366,
-		.v_active = 768,
+		.h_active = 1280,
+		.v_active = 800,
 		.h_front_porch = 58,
 		.v_front_porch = 4,
 	},
@@ -232,16 +220,16 @@ static struct tegra_dc_mode ventana_panel_modes[] = {
 
 static struct tegra_fb_data ventana_fb_data = {
 	.win		= 0,
-	.xres		= 1366,
-	.yres		= 768,
+	.xres		= 1280,
+	.yres		= 800,
 	.bits_per_pixel	= 32,
 	.flags		= TEGRA_FB_FLIP_ON_PROBE,
 };
 
 static struct tegra_fb_data ventana_hdmi_fb_data = {
 	.win		= 0,
-	.xres		= 1366,
-	.yres		= 768,
+	.xres		= 1280,
+	.yres		= 800,
 	.bits_per_pixel	= 32,
 	.flags		= TEGRA_FB_FLIP_ON_PROBE,
 };
@@ -313,14 +301,7 @@ static struct nvhost_device ventana_disp2_device = {
 		.platform_data = &ventana_disp2_pdata,
 	},
 };
-#else
-static int ventana_disp1_check_fb(struct device *dev, struct fb_info *info)
-{
-	return 0;
-}
-#endif
 
-#if defined(CONFIG_TEGRA_NVMAP)
 static struct nvmap_platform_carveout ventana_carveouts[] = {
 	[0] = NVMAP_HEAP_CARVEOUT_IRAM_INIT,
 	[1] = {
@@ -342,11 +323,11 @@ static struct platform_device ventana_nvmap_device = {
 		.platform_data = &ventana_nvmap_data,
 	},
 };
-#endif
 
 static struct platform_device *ventana_gfx_devices[] __initdata = {
-#if defined(CONFIG_TEGRA_NVMAP)
 	&ventana_nvmap_device,
+#ifdef CONFIG_TEGRA_GRHOST
+	&tegra_grhost_device,
 #endif
 	&tegra_pwfm2_device,
 	&ventana_backlight_device,
@@ -368,7 +349,7 @@ static void ventana_panel_early_suspend(struct early_suspend *h)
 #ifdef CONFIG_TEGRA_CONVSERVATIVE_GOV_ON_EARLYSUPSEND
 	cpufreq_save_default_governor();
 	cpufreq_set_conservative_governor();
-        cpufreq_set_conservative_governor_param("up_threshold",
+	cpufreq_set_conservative_governor_param("up_threshold",
 			SET_CONSERVATIVE_GOVERNOR_UP_THRESHOLD);
 
 	cpufreq_set_conservative_governor_param("down_threshold",
@@ -390,10 +371,31 @@ static void ventana_panel_late_resume(struct early_suspend *h)
 }
 #endif
 
+void ventana_clear_framebuffer(unsigned long base, unsigned long size)
+{
+	void __iomem *io;
+
+	BUG_ON(PAGE_ALIGN((unsigned long)base) != (unsigned long)base);
+	BUG_ON(PAGE_ALIGN(size) != size);
+
+	io = ioremap(base, size);
+	if (!io) {
+		pr_err("%s: Failed to map framebuffer\n", __func__);
+		return;
+	}
+
+	memset(io, 0, size);
+	iounmap(io);
+}
+
 int __init ventana_panel_init(void)
 {
 	int err;
-	struct resource __maybe_unused *res;
+	struct resource *res;
+
+	gpio_request(ventana_pnl_pwr_enb, "pnl_pwr_enb");
+	gpio_direction_output(ventana_pnl_pwr_enb, 1);
+	tegra_gpio_enable(ventana_pnl_pwr_enb);
 
 	gpio_request(ventana_lvds_shutdown, "lvds_shdn");
 	gpio_direction_output(ventana_lvds_shutdown, 1);
@@ -414,19 +416,13 @@ int __init ventana_panel_init(void)
 	register_early_suspend(&ventana_panel_early_suspender);
 #endif
 
-#if defined(CONFIG_TEGRA_NVMAP)
 	ventana_carveouts[1].base = tegra_carveout_start;
 	ventana_carveouts[1].size = tegra_carveout_size;
-#endif
-
-#ifdef CONFIG_TEGRA_GRHOST
-	err = nvhost_device_register(&tegra_grhost_device);
-	if (err)
-		return err;
-#endif
 
 	err = platform_add_devices(ventana_gfx_devices,
 				   ARRAY_SIZE(ventana_gfx_devices));
+
+	ventana_clear_framebuffer(tegra_fb_start, tegra_fb_size);
 
 #if defined(CONFIG_TEGRA_GRHOST) && defined(CONFIG_TEGRA_DC)
 	res = nvhost_get_resource_byname(&ventana_disp1_device,
@@ -438,13 +434,7 @@ int __init ventana_panel_init(void)
 		IORESOURCE_MEM, "fbmem");
 	res->start = tegra_fb2_start;
 	res->end = tegra_fb2_start + tegra_fb2_size - 1;
-#endif
 
-	/* Copy the bootloader fb to the fb. */
-	tegra_move_framebuffer(tegra_fb_start, tegra_bootloader_fb_start,
-		min(tegra_fb_size, tegra_bootloader_fb_size));
-
-#if defined(CONFIG_TEGRA_GRHOST) && defined(CONFIG_TEGRA_DC)
 	if (!err)
 		err = nvhost_device_register(&ventana_disp1_device);
 

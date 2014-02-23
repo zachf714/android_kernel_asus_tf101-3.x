@@ -25,7 +25,7 @@
 
 #include <linux/types.h>
 
-#include <mach/edp.h>
+/*#include <mach/edp.h>*/
 
 #define MAX_ZONES	16
 

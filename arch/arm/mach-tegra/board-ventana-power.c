@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2012 NVIDIA, Inc.
+ * Copyright (C) 2010-2011 NVIDIA, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -24,7 +24,6 @@
 #include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/power/gpio-charger.h>
-#include <linux/regulator/fixed.h>
 
 #include <mach/iomap.h>
 #include <mach/irqs.h>
@@ -90,6 +89,7 @@ static struct regulator_consumer_supply tps658621_ldo5_supply[] = {
 static struct regulator_consumer_supply tps658621_ldo6_supply[] = {
 	REGULATOR_SUPPLY("vdd_ldo6", NULL),
 	REGULATOR_SUPPLY("vcsi", "tegra_camera"),
+	REGULATOR_SUPPLY("vcsi", NULL),
 	REGULATOR_SUPPLY("vdd_dmic", "tegra-snd-wm8903.0"),
 	REGULATOR_SUPPLY("vdd_i2c", "3-0030"),
 	REGULATOR_SUPPLY("vdd_i2c", "6-0072"),
@@ -155,10 +155,10 @@ static struct regulator_init_data ldo2_data = REGULATOR_INIT(ldo2, 725, 1500, OF
 static struct regulator_init_data ldo3_data = REGULATOR_INIT(ldo3, 1250, 3300, OFF, NULL);
 static struct regulator_init_data ldo4_data = REGULATOR_INIT(ldo4, 1700, 2475, ON, NULL);
 static struct regulator_init_data ldo5_data = REGULATOR_INIT(ldo5, 1250, 3300, ON, NULL);
-static struct regulator_init_data ldo6_data = REGULATOR_INIT(ldo6, 1800, 1800, OFF, NULL);
+static struct regulator_init_data ldo6_data = REGULATOR_INIT(ldo6, 1250, 1800, OFF, NULL);
 static struct regulator_init_data ldo7_data = REGULATOR_INIT(ldo7, 1250, 3300, OFF, NULL);
 static struct regulator_init_data ldo8_data = REGULATOR_INIT(ldo8, 1250, 3300, OFF, NULL);
-static struct regulator_init_data ldo9_data = REGULATOR_INIT(ldo9, 1250, 3300, ON, NULL);
+static struct regulator_init_data ldo9_data = REGULATOR_INIT(ldo9, 1250, 3300, OFF, NULL);
 
 static struct tps6586x_rtc_platform_data rtc_data = {
 	.irq = TEGRA_NR_IRQS + TPS6586X_INT_RTC_ALM1,
@@ -242,31 +242,6 @@ static struct tegra_suspend_platform_data ventana_suspend_data = {
 	.board_resume = ventana_board_resume,
 };
 
-static struct regulator_consumer_supply pnl_pwr_consumer_supply[] = {
-	REGULATOR_SUPPLY("pnl_pwr", NULL),
-};
-
-FIXED_VOLTAGE_REG_INIT(2, pnl_pwr, 2800000, PANEL_POWER_EN_GPIO,
-				0, 1, 0, REGULATOR_CHANGE_STATUS, 0);
-
-static struct platform_device *fixed_voltage_regulators[] __initdata = {
-	ADD_FIXED_VOLTAGE_REG(pnl_pwr),
-};
-
-int __init ventana_fixed_voltage_regulator_init(void)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(fixed_voltage_regulators); ++i) {
-		struct fixed_voltage_config *fixed_voltage_regulators_pdata =
-				fixed_voltage_regulators[i]->dev.platform_data;
-		if (fixed_voltage_regulators_pdata->gpio < TEGRA_NR_GPIOS)
-			tegra_gpio_enable(fixed_voltage_regulators_pdata->gpio);
-	}
-	return platform_add_devices(fixed_voltage_regulators,
-				ARRAY_SIZE(fixed_voltage_regulators));
-}
-
 int __init ventana_regulator_init(void)
 {
 	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
@@ -286,11 +261,9 @@ int __init ventana_regulator_init(void)
 
 	i2c_register_board_info(4, ventana_regulators, 1);
 
-//	regulator_has_full_constraints();
+	//regulator_has_full_constraints();
 
 	tegra_init_suspend(&ventana_suspend_data);
-
-	ventana_fixed_voltage_regulator_init();
 
 	return 0;
 }
@@ -344,30 +317,6 @@ fail:
 	pr_err("%s: gpio_request failed #%d\n", __func__, TPS6586X_GPIO_BASE);
 	gpio_free(TPS6586X_GPIO_BASE);
 	return ret;
-}
-
-static struct regulator_consumer_supply cam1_2v8_consumer_supply[] = {
-	REGULATOR_SUPPLY("cam1_2v8", NULL),
-};
-
-static struct regulator_consumer_supply cam2_2v8_consumer_supply[] = {
-	REGULATOR_SUPPLY("cam2_2v8", NULL),
-};
-
-FIXED_VOLTAGE_REG_INIT(0, cam1_2v8, 2800000, CAM1_LDO_SHUTDN_L_GPIO,
-				0, 1, 0, REGULATOR_CHANGE_STATUS, 0);
-FIXED_VOLTAGE_REG_INIT(1, cam2_2v8, 2800000, CAM2_LDO_SHUTDN_L_GPIO,
-				0, 1, 0, REGULATOR_CHANGE_STATUS, 0);
-
-static struct platform_device *cam_fixed_voltage_regulators[] __initdata = {
-	ADD_FIXED_VOLTAGE_REG(cam1_2v8),
-	ADD_FIXED_VOLTAGE_REG(cam2_2v8),
-};
-
-int __init ventana_cam_fixed_voltage_regulator_init(void)
-{
-	return platform_add_devices(cam_fixed_voltage_regulators,
-				ARRAY_SIZE(cam_fixed_voltage_regulators));
 }
 
 late_initcall(ventana_pcie_init);
